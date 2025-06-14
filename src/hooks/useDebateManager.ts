@@ -23,7 +23,7 @@ const useDebateManager = () => {
   const [isLoading, setIsLoading] = useState(false); // Used for overall debate state + individual turns
   const [isDebateFinished, setIsDebateFinished] = useState(false);
 
-  const getSpeakerById = useCallback((id: string) => speakers.find(s => s.id === id), [speakers]);
+  const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
 
   const addMessage = useCallback((speakerId: string, text: string): string => {
     const newMessage: Message = {
@@ -81,12 +81,12 @@ const useDebateManager = () => {
                 };
               });
             
-            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-debater`;
+            const functionUrl = `https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`;
 
             const response = await fetch(functionUrl, {
               method: 'POST',
               headers: {
-                ...supabase.functions.headers,
+                ...(supabase.functions as any).headers,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
