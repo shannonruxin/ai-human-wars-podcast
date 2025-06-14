@@ -5,7 +5,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in 
 const OPENROUTER_API_KEY = Deno.env.get("OpenRouter"); // Matches the secret name you've set
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-const MODEL_IDENTIFIER = "deepseek/deepseek-r1-0528:free"; // Using the specified free model
+const MODEL_IDENTIFIER = "mistralai/mistral-7b-instruct:free"; // Using the specified free model
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,7 +65,7 @@ serve(async (req: Request) => {
         messages: messages,
         stream: true, // Enable streaming
         provider: {
-          only: ["chutes"],
+          only: ["mistral"],
         },
       }),
     });
@@ -102,3 +102,4 @@ serve(async (req: Request) => {
     });
   }
 });
+
