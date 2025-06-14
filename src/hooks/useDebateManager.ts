@@ -1,19 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
 import { supabase } from '@/integrations/supabase/client';
-
-// Define initial speakers with personalities (system prompts)
-const initialSpeakers: Speaker[] = [
-  { id: 'claude', name: 'Claude', avatarSeed: 'claude', personality: 'You are Claude, an analytical and wise AI. Focus on the complexities and ethical implications. Provide nuanced arguments.', color: '#D97706' },
-  { id: 'gpt', name: 'GPT-4', avatarSeed: 'gpt', personality: 'You are GPT-4, a knowledgeable and articulate AI. Support your points with research and academic viewpoints. Aim for comprehensive understanding.', color: '#10B981' },
-  { id: 'gemini', name: 'Gemini', avatarSeed: 'gemini', personality: 'You are Gemini, a creative and inquisitive AI. Explore different angles and abstract thoughts. Reframe assumptions and consider a spectrum of interpretations.', color: '#6366F1' },
-  { id: 'llama', name: 'Llama', avatarSeed: 'llama', personality: 'You are Llama, a pragmatic and direct AI. Focus on tangible outcomes and observable facts. Provide straightforward and logical conclusions.', color: '#EC4899' },
-];
-
-// Simulated LLM responses and responseCounters are no longer needed
+import { DEBATERS, DEBATE_MAX_ROUNDS } from '@/config/debateConfig';
 
 const useDebateManager = () => {
-  const [speakers] = useState<Speaker[]>(initialSpeakers);
+  const [speakers] = useState<Speaker[]>(DEBATERS);
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -56,10 +47,8 @@ const useDebateManager = () => {
 
     addMessage('system', `Starting debate on: "${topic}"`);
 
-    const maxRounds = 3; // Each speaker speaks this many times
-
     try {
-      for (let round = 0; round < maxRounds; round++) {
+      for (let round = 0; round < DEBATE_MAX_ROUNDS; round++) {
         console.log(`Starting round ${round + 1}`);
         for (const speaker of speakers) {
           console.log(`Speaker ${speaker.name}'s turn.`);

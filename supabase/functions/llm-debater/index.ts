@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in Deno environments with some APIs
 
@@ -42,7 +41,7 @@ serve(async (req: Request) => {
         name: msg.speakerName?.replace(/\s+/g, '_'), // OpenAI requires name to be a string of a-z, A-Z, 0-9, and underscores
         content: msg.text,
       })),
-      { role: "user", content: `Continue the debate on topic: ${topic}. It is now your turn to speak. Provide your response.` },
+      { role: "user", content: `You are ${history && history.length > 0 ? "the next" : "the first"} speaker in this debate on "${topic}". Please provide your arguments, building upon or refuting the points made by previous speakers. It is your turn to speak now.` },
     ];
 
     const response = await fetch(OPENROUTER_API_URL, {
