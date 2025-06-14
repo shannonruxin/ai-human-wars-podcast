@@ -1,1 +1,5 @@
+
 project_id = "ikdqbiumciskarxwooln"
+
+[functions.llm-debater]
+  verify_jwt = false # Assuming you want to call this without user auth for now, adjust if needed
