@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in Deno environments with some APIs
 
@@ -32,6 +33,12 @@ serve(async (req: Request) => {
 
     console.log(`[llm-debater] Received stream request for topic: "${topic}"`);
 
+    const lastSpeakerName = history && history.length > 0 ? history[history.length - 1].speakerName : null;
+    
+    const userContent = lastSpeakerName
+      ? `That was the statement from ${lastSpeakerName}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
+      : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+
     // Construct messages with history
     const messages = [
       { role: "system", content: systemPrompt },
@@ -41,7 +48,7 @@ serve(async (req: Request) => {
         name: msg.speakerName?.replace(/\s+/g, '_'), // OpenAI requires name to be a string of a-z, A-Z, 0-9, and underscores
         content: msg.text,
       })),
-      { role: "user", content: `You are ${history && history.length > 0 ? "the next" : "the first"} speaker in this debate on "${topic}". Please provide your arguments, building upon or refuting the points made by previous speakers. It is your turn to speak now.` },
+      { role: "user", content: userContent },
     ];
 
     const response = await fetch(OPENROUTER_API_URL, {
