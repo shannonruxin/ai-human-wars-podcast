@@ -1,11 +1,10 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in Deno environments with some APIs
 
-const OPENROUTER_API_KEY = Deno.env.get("OpenRouter"); // Matches the secret name you've set
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENAI_API_KEY = Deno.env.get("OpenAI"); // Use the OpenAI secret
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
-const MODEL_IDENTIFIER = "deepseek/deepseek-chat:free";
+const MODEL_IDENTIFIER = "gpt-4o-mini";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,8 +20,8 @@ serve(async (req: Request) => {
   try {
     const { topic, systemPrompt, history } = await req.json();
 
-    if (!OPENROUTER_API_KEY) {
-      throw new Error("OpenRouter API key is not set in environment variables.");
+    if (!OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is not set in environment variables.");
     }
     if (!topic || !systemPrompt) {
       return new Response(JSON.stringify({ error: "Missing topic or systemPrompt in request body" }), {
@@ -45,13 +44,11 @@ serve(async (req: Request) => {
       { role: "user", content: `Continue the debate on topic: ${topic}. It is now your turn to speak. Provide your response.` },
     ];
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(OPENAI_API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://lovable.dev",
-        "X-Title": "LLM Debate Show",
       },
       body: JSON.stringify({
         model: MODEL_IDENTIFIER,
@@ -62,9 +59,9 @@ serve(async (req: Request) => {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[llm-debater] OpenRouter API error: ${response.status} ${response.statusText}`, errorBody);
+      console.error(`[llm-debater] OpenAI API error: ${response.status} ${response.statusText}`, errorBody);
       return new Response(JSON.stringify({ 
-        error: `OpenRouter API error: ${response.status} ${response.statusText}`, 
+        error: `OpenAI API error: ${response.status} ${response.statusText}`, 
         details: errorBody 
       }), {
         status: response.status,
@@ -73,13 +70,13 @@ serve(async (req: Request) => {
     }
 
     if (!response.body) {
-      return new Response(JSON.stringify({ error: "No response body from OpenRouter stream." }), {
+      return new Response(JSON.stringify({ error: "No response body from OpenAI stream." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Pipe the stream from OpenRouter directly to the client
+    // Pipe the stream from OpenAI directly to the client
     return new Response(response.body, {
       headers: { ...corsHeaders, 'Content-Type': 'text/event-stream; charset=utf-8' },
     });
