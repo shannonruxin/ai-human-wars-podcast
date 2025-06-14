@@ -74,6 +74,8 @@ const useDebateManager = () => {
                 };
               });
             
+            console.log(`[useDebateManager] History being sent for ${speaker.name}:`, JSON.stringify(history, null, 2));
+            
             const functionUrl = `https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`;
 
             const speakerPromptConfig = speaker.promptConfig || { instructions: '', personality: '' };

@@ -32,6 +32,7 @@ serve(async (req: Request) => {
     }
 
     console.log(`[llm-debater] Received stream request for topic: "${topic}"`);
+    console.log(`[llm-debater] History received:`, JSON.stringify(history, null, 2));
 
     const lastSpeakerName = history && history.length > 0 ? history[history.length - 1].speakerName : null;
     
