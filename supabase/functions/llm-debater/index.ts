@@ -5,9 +5,6 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in 
 const OPENROUTER_API_KEY = Deno.env.get("OpenRouter"); // Matches the secret name you've set
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// NOTE: The user specified "QWEN3 235B A22B".
-// Using "qwen/qwen2-72b-instruct" as a placeholder.
-// User can update this if they have a more specific model ID for OpenRouter.
 const MODEL_IDENTIFIER = "qwen/qwen2-72b-instruct";
 
 const corsHeaders = {
@@ -41,9 +38,9 @@ serve(async (req: Request) => {
       headers: {
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        // OpenRouter specific headers if needed, e.g., for routing or site identification
-        // "HTTP-Referer": "YOUR_SITE_URL", // Replace with your actual site URL
-        // "X-Title": "YOUR_SITE_NAME", // Replace with your actual site name
+        // OpenRouter specific headers
+        "HTTP-Referer": "https://lovable.dev", // Replace with your actual site URL if deployed
+        "X-Title": "LLM Debate Show", // Replace with your actual site name if deployed
       },
       body: JSON.stringify({
         model: MODEL_IDENTIFIER,
@@ -60,7 +57,14 @@ serve(async (req: Request) => {
     if (!response.ok) {
       const errorBody = await response.text();
       console.error(`[llm-debater] OpenRouter API error: ${response.status} ${response.statusText}`, errorBody);
-      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorBody}`);
+      // Return the error from OpenRouter to the client for more detailed debugging
+      return new Response(JSON.stringify({ 
+        error: `OpenRouter API error: ${response.status} ${response.statusText}`, 
+        details: errorBody 
+      }), {
+        status: response.status, // Propagate OpenRouter's status code
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
@@ -70,7 +74,12 @@ serve(async (req: Request) => {
 
     if (!llmResponse) {
         console.error("[llm-debater] No content in OpenRouter response choice.");
-        throw new Error("Failed to get a valid response from the LLM.");
+        // It's possible OpenRouter returns a 200 OK but with an error in the body or empty choices
+        const errorReason = data.error?.message || "No content in LLM response.";
+        return new Response(JSON.stringify({ error: errorReason, details: data }), {
+          status: 500, // Or a more appropriate error code if available from data.error
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
     }
 
     return new Response(JSON.stringify({ response: llmResponse }), {
@@ -78,10 +87,11 @@ serve(async (req: Request) => {
     });
 
   } catch (error) {
-    console.error("[llm-debater] Error in Edge Function:", error.message);
+    console.error("[llm-debater] Error in Edge Function:", error.message, error.stack);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
