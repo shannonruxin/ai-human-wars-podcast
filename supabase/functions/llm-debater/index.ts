@@ -1,10 +1,11 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in Deno environments with some APIs
 
 const OPENROUTER_API_KEY = Deno.env.get("OpenRouter"); // Matches the secret name you've set
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-const MODEL_IDENTIFIER = "mistralai/mistral-7b-instruct:free"; // Using the specified free model
+const MODEL_IDENTIFIER = "mistralai/mistral-8b"; // Using the specified model
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +64,9 @@ serve(async (req: Request) => {
         model: MODEL_IDENTIFIER,
         messages: messages,
         stream: true, // Enable streaming
+        provider: {
+          only: ["mistral"],
+        },
       }),
     });
 
