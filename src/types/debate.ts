@@ -3,7 +3,10 @@ export interface Speaker {
   id: string;
   name: string;
   avatarSeed: string; // To generate a consistent placeholder avatar
-  personality?: string; // For future LLM prompting
+  promptConfig?: {
+    instructions: string;
+    personality: string;
+  };
   voiceId?: string; // For future TTS
   color: string; // For UI theming, like the speaking indicator
 }
@@ -16,4 +19,3 @@ export interface Message {
 }
 
 export type DebateTopic = string;
-

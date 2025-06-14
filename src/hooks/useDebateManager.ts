@@ -13,6 +13,8 @@ const useDebateManager = () => {
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); // Used for overall debate state + individual turns
   const [isDebateFinished, setIsDebateFinished] = useState(false);
+  const [subTopics, setSubTopics] = useState<string[]>([]);
+  const [currentSubTopic, setCurrentSubTopic] = useState<string | null>(null);
 
   const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
 
@@ -43,6 +45,8 @@ const useDebateManager = () => {
     setCurrentTopic(topic);
     setIsDebateFinished(false);
     setActiveSpeakerId(null);
+    setSubTopics([]);
+    setCurrentSubTopic(null);
     setIsLoading(true); // Set loading for the entire debate process
 
     addMessage('system', `Starting debate on: "${topic}"`);
@@ -72,6 +76,17 @@ const useDebateManager = () => {
             
             const functionUrl = `https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`;
 
+            const speakerPromptConfig = speaker.promptConfig || { instructions: '', personality: '' };
+            
+            // NOTE: The logic to automatically detect sub-topic shifts is a complex feature for a future step.
+            // For now, this structure allows us to manually guide the focus if we were to set a `currentSubTopic`.
+            const subTopicInfo = currentSubTopic 
+                ? `The current sub-topic is: "${currentSubTopic}". Focus your arguments here.` 
+                : 'You may introduce a new sub-topic if relevant.';
+
+            const systemPrompt = `${speakerPromptConfig.instructions}\n\nYour specific personality: ${speakerPromptConfig.personality}\n\nDebate Topic: "${topic}"\n${subTopicInfo}`.trim();
+
+
             const response = await fetch(functionUrl, {
               method: 'POST',
               headers: {
@@ -80,7 +95,7 @@ const useDebateManager = () => {
               },
               body: JSON.stringify({
                 topic: topic,
-                systemPrompt: speaker.personality,
+                systemPrompt: systemPrompt,
                 history,
               }),
             });
@@ -143,7 +158,7 @@ const useDebateManager = () => {
         console.log("Debate finished.");
     }
 
-  }, [speakers, isLoading, addMessage, getSpeakerById, appendToMessage]); // Ensure all dependencies are listed
+  }, [speakers, isLoading, addMessage, getSpeakerById, appendToMessage, currentSubTopic]); // Ensure all dependencies are listed
 
   return {
     speakers,
