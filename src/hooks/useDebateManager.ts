@@ -1,7 +1,6 @@
-
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
-import { supabase } from '@/integrations/supabase/client'; // Import Supabase client
+import { supabase } from '@/integrations/supabase/client';
 
 // Define initial speakers with personalities (system prompts)
 const initialSpeakers: Speaker[] = [
@@ -16,24 +15,33 @@ const initialSpeakers: Speaker[] = [
 const useDebateManager = () => {
   const [speakers] = useState<Speaker[]>(initialSpeakers);
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const [currentTopic, setCurrentTopic] = useState<DebateTopic | null>(null);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); // Used for overall debate state + individual turns
   const [isDebateFinished, setIsDebateFinished] = useState(false);
 
-  // debateIntervalRef and responseCounters are no longer needed
-
   const getSpeakerById = useCallback((id: string) => speakers.find(s => s.id === id), [speakers]);
 
-  const addMessage = useCallback((speakerId: string, text: string) => {
+  const addMessage = useCallback((speakerId: string, text: string): string => {
     const newMessage: Message = {
-      id: Date.now().toString() + Math.random().toString(),
+      id: `${Date.now()}-${Math.random()}`,
       speakerId,
       text,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, newMessage]);
-    // Active speaker is managed more directly in startDebate now
+    return newMessage.id;
+  }, []);
+
+  const appendToMessage = useCallback((messageId: string, chunk: string) => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId ? { ...msg, text: msg.text + chunk } : msg
+      )
+    );
   }, []);
 
   const startDebate = useCallback(async (topic: DebateTopic) => {
@@ -56,34 +64,82 @@ const useDebateManager = () => {
         for (const speaker of speakers) {
           console.log(`Speaker ${speaker.name}'s turn.`);
           setActiveSpeakerId(speaker.id);
-          // Optional: Add a "Thinking..." message for the current speaker
-          // addMessage(speaker.id, `${speaker.name} is thinking...`);
+          
+          const messageId = addMessage(speaker.id, '');
 
           try {
-            console.log(`Invoking llm-debater for ${speaker.name} with system prompt: ${speaker.personality}`);
-            const { data, error: functionError } = await supabase.functions.invoke('llm-debater', {
-              body: {
-                topic: topic,
-                systemPrompt: speaker.personality, // Use personality as the system prompt
+            console.log(`Invoking llm-debater for ${speaker.name}`);
+
+            const history = messagesRef.current
+              .filter(m => m.speakerId !== 'system' && m.text) // Don't include system messages or empty ones
+              .map(m => {
+                const messageSpeaker = getSpeakerById(m.speakerId);
+                return {
+                  speakerId: m.speakerId,
+                  text: m.text,
+                  speakerName: messageSpeaker?.name || m.speakerId,
+                };
+              });
+            
+            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-debater`;
+
+            const response = await fetch(functionUrl, {
+              method: 'POST',
+              headers: {
+                ...supabase.functions.headers,
+                'Content-Type': 'application/json',
               },
+              body: JSON.stringify({
+                topic: topic,
+                systemPrompt: speaker.personality,
+                history,
+              }),
             });
-
-            if (functionError) {
-              console.error(`Error invoking llm-debater function for ${speaker.name}:`, functionError);
-              addMessage('system', `Error getting response from ${speaker.name}: ${functionError.message}. Check Edge Function logs.`);
-              continue; // Skip to next speaker or handle error more gracefully
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Edge function error: ${response.status} ${errorText}`);
             }
 
-            if (data && data.response) {
-              console.log(`Response from ${speaker.name}:`, data.response);
-              addMessage(speaker.id, data.response);
-            } else {
-              console.warn(`${speaker.name} did not provide a valid response. Data:`, data);
-              addMessage('system', `${speaker.name} did not provide a response.`);
+            if (!response.body) {
+              throw new Error("Response body is null");
             }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              let lineEnd = buffer.indexOf('\n');
+
+              while (lineEnd !== -1) {
+                const line = buffer.slice(0, lineEnd).trim();
+                buffer = buffer.slice(lineEnd + 1);
+
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') break;
+                  try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.choices?.[0]?.delta?.content;
+                    if (content) {
+                      appendToMessage(messageId, content);
+                    }
+                  } catch (e) {
+                     // Ignore parsing errors for non-JSON lines
+                  }
+                }
+                lineEnd = buffer.indexOf('\n');
+              }
+            }
+
           } catch (e: any) {
-            console.error(`Failed to call llm-debater function for ${speaker.name}:`, e);
-            addMessage('system', `System error while getting response from ${speaker.name}: ${e.message}.`);
+            console.error(`Failed to get stream for ${speaker.name}:`, e);
+            appendToMessage(messageId, `_An error occurred while getting the response: ${e.message}_`);
           }
         }
       }
@@ -98,9 +154,7 @@ const useDebateManager = () => {
         console.log("Debate finished.");
     }
 
-  }, [speakers, isLoading, addMessage, getSpeakerById]); // Ensure all dependencies are listed
-
-  // useEffect for cleanup is no longer needed as setInterval is removed
+  }, [speakers, isLoading, addMessage, getSpeakerById, appendToMessage]); // Ensure all dependencies are listed
 
   return {
     speakers,

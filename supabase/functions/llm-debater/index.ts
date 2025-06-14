@@ -19,7 +19,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { topic, systemPrompt } = await req.json();
+    const { topic, systemPrompt, history } = await req.json();
 
     if (!OPENROUTER_API_KEY) {
       throw new Error("OpenRouter API key is not set in environment variables.");
@@ -31,59 +31,57 @@ serve(async (req: Request) => {
       });
     }
 
-    console.log(`[llm-debater] Received request for topic: "${topic}" with system prompt: "${systemPrompt}"`);
+    console.log(`[llm-debater] Received stream request for topic: "${topic}"`);
+
+    // Construct messages with history
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...(history || []).map((msg: { speakerId: string; text: string; speakerName?: string }) => ({
+        // Use 'assistant' role for all debaters, distinguishing them by name
+        role: msg.speakerId === 'system' ? 'system' : 'assistant',
+        name: msg.speakerName?.replace(/\s+/g, '_'), // OpenAI requires name to be a string of a-z, A-Z, 0-9, and underscores
+        content: msg.text,
+      })),
+      { role: "user", content: `Continue the debate on topic: ${topic}. It is now your turn to speak. Provide your response.` },
+    ];
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        // OpenRouter specific headers
-        "HTTP-Referer": "https://lovable.dev", // Replace with your actual site URL if deployed
-        "X-Title": "LLM Debate Show", // Replace with your actual site name if deployed
+        "HTTP-Referer": "https://lovable.dev",
+        "X-Title": "LLM Debate Show",
       },
       body: JSON.stringify({
         model: MODEL_IDENTIFIER,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Debate topic: ${topic}\n\nPlease provide your opening statement or response.` },
-        ],
-        // Optional parameters:
-        // temperature: 0.7,
-        // max_tokens: 500,
+        messages: messages,
+        stream: true, // Enable streaming
       }),
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
       console.error(`[llm-debater] OpenRouter API error: ${response.status} ${response.statusText}`, errorBody);
-      // Return the error from OpenRouter to the client for more detailed debugging
       return new Response(JSON.stringify({ 
         error: `OpenRouter API error: ${response.status} ${response.statusText}`, 
         details: errorBody 
       }), {
-        status: response.status, // Propagate OpenRouter's status code
+        status: response.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const data = await response.json();
-    console.log("[llm-debater] Received response from OpenRouter:", data);
-
-    const llmResponse = data.choices?.[0]?.message?.content?.trim();
-
-    if (!llmResponse) {
-        console.error("[llm-debater] No content in OpenRouter response choice.");
-        // It's possible OpenRouter returns a 200 OK but with an error in the body or empty choices
-        const errorReason = data.error?.message || "No content in LLM response.";
-        return new Response(JSON.stringify({ error: errorReason, details: data }), {
-          status: 500, // Or a more appropriate error code if available from data.error
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    if (!response.body) {
+      return new Response(JSON.stringify({ error: "No response body from OpenRouter stream." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify({ response: llmResponse }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Pipe the stream from OpenRouter directly to the client
+    return new Response(response.body, {
+      headers: { ...corsHeaders, 'Content-Type': 'text/event-stream; charset=utf-8' },
     });
 
   } catch (error) {
@@ -94,4 +92,3 @@ serve(async (req: Request) => {
     });
   }
 });
-
