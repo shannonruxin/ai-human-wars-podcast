@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useRef } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
 import { supabase } from '@/integrations/supabase/client';
@@ -78,7 +79,7 @@ const useDebateManager = () => {
             
             const functionUrl = `https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`;
 
-            const speakerPromptConfig = speaker.promptConfig || { instructions: '', personality: '' };
+            const speakerPromptConfig = speaker.promptConfig;
             
             // NOTE: The logic to automatically detect sub-topic shifts is a complex feature for a future step.
             // For now, this structure allows us to manually guide the focus if we were to set a `currentSubTopic`.
@@ -86,7 +87,25 @@ const useDebateManager = () => {
                 ? `The current sub-topic is: "${currentSubTopic}". Focus your arguments here.` 
                 : 'You may introduce a new sub-topic if relevant.';
 
-            const systemPrompt = `${speakerPromptConfig.instructions}\n\nYour specific personality: ${speakerPromptConfig.personality}\n\nDebate Topic: "${topic}"\n${subTopicInfo}`.trim();
+            let systemPrompt = `Debate Topic: "${topic}"\n${subTopicInfo}`.trim();
+
+            if (speakerPromptConfig) {
+              const { instructions, personality, beliefAgree, beliefDisagree, style } = speakerPromptConfig;
+
+              const beliefAgreeText = beliefAgree?.length
+                ? `\n\nCore beliefs you agree with: ${beliefAgree.join(', ')}.`
+                : '';
+
+              const beliefDisagreeText = beliefDisagree?.length
+                ? `\n\nCore beliefs you disagree with: ${beliefDisagree.join(', ')}.`
+                : '';
+
+              const styleText = style
+                ? `\n\nYour communication style: ${style}`
+                : '';
+              
+              systemPrompt = `${instructions}\n\nYour specific personality: ${personality}${beliefAgreeText}${beliefDisagreeText}${styleText}\n\nDebate Topic: "${topic}"\n${subTopicInfo}`.trim();
+            }
 
 
             const response = await fetch(functionUrl, {
