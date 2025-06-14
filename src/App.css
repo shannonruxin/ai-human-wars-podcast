@@ -1,11 +1,8 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
 
-.logo {
+/* Remove default styles or keep only essential ones */
+/* For this specific layout, we want body/html to be full height and #root to take over */
+
+/* .logo {
   height: 6em;
   padding: 1.5em;
   will-change: filter;
@@ -39,4 +36,6 @@
 
 .read-the-docs {
   color: #888;
-}
+} */
+
+/* Minimal reset or global styles if needed */
