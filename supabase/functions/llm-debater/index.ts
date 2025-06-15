@@ -19,7 +19,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { topic, systemPrompt, history, isInterruption, targetSpeakerName } = await req.json();
+    const { topic, systemPrompt, history, isInterruption, targetSpeakerName, turnType, debaterNames } = await req.json();
 
     if (!OPENROUTER_API_KEY) {
       throw new Error("OpenRouter API key is not set in environment variables.");
@@ -33,17 +33,32 @@ serve(async (req: Request) => {
 
     console.log(`[llm-debater] Received request for topic: "${topic}"`);
     if(isInterruption) console.log(`[llm-debater] This is an INTERJECTION targeting ${targetSpeakerName}`);
+    else console.log(`[llm-debater] Turn Type: ${turnType}`);
 
 
     let userContent = '';
 
-    if (isInterruption) {
-        userContent = `You are interrupting ${targetSpeakerName}. Their last statement has triggered you. You MUST make a short, sharp, angry retort directly addressing their last point. Keep it brief and impactful. Do not give a full monologue. What is your retort?`;
-    } else {
-        const lastSpeakerName = history && history.length > 0 ? history[history.length - 1].speakerName : null;
-        userContent = lastSpeakerName
-          ? `That was the statement from ${lastSpeakerName}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
-          : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+    switch (turnType) {
+        case 'introduction':
+            userContent = `You are the Moderator. Your task is to introduce the debate.
+- Topic: "${topic}"
+- Debaters: ${debaterNames.join(', ')}
+Please provide a compelling opening statement to kick off the podcast episode. Welcome the guests and set the stage.`;
+            break;
+        case 'greeting':
+            const lastSpeakerNameGreeting = history && history.length > 0 ? history[history.length - 1].speakerName : 'The Moderator';
+            userContent = `That was ${lastSpeakerNameGreeting}. It's your turn to speak. Please offer a brief greeting to the moderator and your fellow debaters. Keep it short and professional, perhaps with a hint of your personality.`;
+            break;
+        case 'interruption':
+            userContent = `You are interrupting ${targetSpeakerName}. Their last statement has triggered you. You MUST make a short, sharp, angry retort directly addressing their last point. Keep it brief and impactful. Do not give a full monologue. What is your retort?`;
+            break;
+        case 'debate':
+        default:
+            const lastSpeakerNameDebate = history && history.length > 0 ? history[history.length - 1].speakerName : null;
+            userContent = lastSpeakerNameDebate
+              ? `That was the statement from ${lastSpeakerNameDebate}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
+              : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+            break;
     }
 
     // Construct messages with history

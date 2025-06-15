@@ -75,19 +75,23 @@ const useDebateManager = () => {
   }
 
   const takeTurn = useCallback(async (
-      speaker: Speaker,
-      topic: DebateTopic,
-      currentHistory: Message[],
-      isInterruption: boolean,
-      targetSpeaker: Speaker | null,
-      signal: AbortSignal
+    speaker: Speaker,
+    topic: DebateTopic,
+    currentHistory: Message[],
+    turnConfig: {
+      type: 'introduction' | 'greeting' | 'debate' | 'interruption';
+      targetSpeaker?: Speaker | null;
+      debaterNames?: string[];
+    },
+    signal: AbortSignal
   ): Promise<string> => {
       setActiveSpeakerId(speaker.id);
       const messageId = addMessage(speaker.id, '');
       let fullText = '';
+      const { type, targetSpeaker, debaterNames } = turnConfig;
 
       try {
-          console.log(`Invoking llm-debater for ${speaker.name}${isInterruption ? ' (Interruption)' : ''}`);
+          console.log(`Invoking llm-debater for ${speaker.name} (Turn type: ${type})`);
 
           const historyForPrompt = currentHistory
               .filter(m => m.speakerId !== 'system' && m.text)
@@ -116,8 +120,10 @@ const useDebateManager = () => {
                   topic,
                   systemPrompt,
                   history: historyForPrompt,
-                  isInterruption,
+                  isInterruption: type === 'interruption',
                   targetSpeakerName: targetSpeaker?.name || null,
+                  turnType: type,
+                  debaterNames: debaterNames || null,
               }),
               signal,
           });
@@ -167,17 +173,41 @@ const useDebateManager = () => {
 
   const runDebate = useCallback(async (topic: DebateTopic, signal: AbortSignal) => {
     setIsLoading(true);
-    addMessage('system', `Starting debate on: "${topic}"`);
+    addMessage('system', `Podcast episode starting on: "${topic}"`);
+
+    const moderator = speakers.find(s => s.role === 'moderator');
+    const debaters = speakers.filter(s => s.role !== 'moderator');
+    const debaterNames = debaters.map(d => d.name);
 
     try {
+        // Phase 1: Introduction by Moderator
+        if (moderator && !signal.aborted) {
+            addMessage('system', 'The moderator will now introduce the topic.');
+            await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal);
+        } else {
+            addMessage('system', 'No moderator found. Starting debate directly.');
+        }
+
+        // Phase 2: Greetings from Debaters
+        if (!signal.aborted) {
+            addMessage('system', 'Debaters will now greet each other.');
+            for (const debater of debaters) {
+                if (signal.aborted) break;
+                await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal);
+            }
+        }
+        
+        addMessage('system', `The formal debate begins now.`);
+
+        // Phase 3: Main Debate Rounds
         for (let round = 1; round <= DEBATE_MAX_ROUNDS; round++) {
             if (signal.aborted) break;
             addMessage('system', `Round ${round} of ${DEBATE_MAX_ROUNDS} begins.`);
-            for (const speaker of speakers) {
+            for (const speaker of debaters) { // Loop over debaters only
                 if (signal.aborted) break;
                 
                 // Normal Turn
-                const fullText = await takeTurn(speaker, topic, messagesRef.current, false, null, signal);
+                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'debate' }, signal);
                 if (signal.aborted || !fullText) continue;
                 
                 const newHeat = calculateNewHeat(argumentHeat, fullText);
@@ -187,7 +217,7 @@ const useDebateManager = () => {
                 const interrupter = findInterrupter(fullText, speaker.id, newHeat);
                 if (interrupter && !signal.aborted) {
                     addMessage('system', `${interrupter.name} interrupts!`);
-                    await takeTurn(interrupter, topic, messagesRef.current, true, speaker, signal);
+                    await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: speaker }, signal);
                 }
             }
         }

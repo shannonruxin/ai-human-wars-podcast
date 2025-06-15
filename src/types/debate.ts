@@ -3,6 +3,7 @@ export interface Speaker {
   id: string;
   name: string;
   avatarSeed: string; // To generate a consistent placeholder avatar
+  role?: 'debater' | 'moderator';
   promptConfig?: {
     instructions: string;
     personality: string;
