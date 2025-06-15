@@ -29,6 +29,7 @@ export const DEBATERS: Speaker[] = [
     triggerWords: [], // Moderators don't get triggered
     interruptionProbability: 0, // Moderators don't interrupt
     color: '#6366F1', // Gemini's color
+    believabilityModifier: 0,
   },
   {
     id: 'gpt',
@@ -46,6 +47,7 @@ export const DEBATERS: Speaker[] = [
     triggerWords: ['i feel', 'i believe', 'anecdotal', 'unfounded', 'no data'],
     interruptionProbability: 0.7,
     color: '#10B981',
+    believabilityModifier: 0.8,
   },
   {
     id: 'claude',
@@ -63,6 +65,7 @@ export const DEBATERS: Speaker[] = [
     triggerWords: ['boring', 'predictable', 'impossible', 'rational', 'framework'],
     interruptionProbability: 0.65,
     color: '#D97706', // Claude's color
+    believabilityModifier: 0.7,
   },
   {
     id: 'deepseek',
@@ -80,6 +83,7 @@ export const DEBATERS: Speaker[] = [
     triggerWords: ['feeling', 'believe', 'vague', 'unclear', 'inefficient'],
     interruptionProbability: 0.75,
     color: '#EC4899',
+    believabilityModifier: 0.2,
   },
   {
     id: 'grok',
@@ -97,5 +101,6 @@ export const DEBATERS: Speaker[] = [
     triggerWords: ['obviously', 'certainly', 'proven', 'serious', 'traditional'],
     interruptionProbability: 0.8,
     color: '#8B5CF6',
+    believabilityModifier: -0.4,
   },
 ];

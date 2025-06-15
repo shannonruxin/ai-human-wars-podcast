@@ -6,6 +6,9 @@ import SpeakerAvatar from './SpeakerAvatar';
 import useDebateManager from '@/hooks/useDebateManager';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot, Flame } from 'lucide-react';
+import AudienceMeter from './AudienceMeter';
+import GrudgeMatrix from './GrudgeMatrix';
+import BelievabilityBar from './BelievabilityBar';
 
 const DebateInterface: React.FC = () => {
   const {
@@ -16,6 +19,8 @@ const DebateInterface: React.FC = () => {
     isLoading,
     isDebateFinished,
     argumentHeat,
+    grudgeMatrix,
+    audienceMeter,
     startDebate,
     getSpeakerById,
   } = useDebateManager();
@@ -35,7 +40,7 @@ const DebateInterface: React.FC = () => {
           <Bot className="w-6 h-6 mr-2 text-indigo-500" /> LLM Debate Show
         </h1>
         {currentTopic && (
-          <div className="max-w-md mx-auto mt-2">
+          <div className="max-w-2xl mx-auto mt-2">
             <p className="text-sm text-center text-gray-600 dark:text-gray-400">Topic: "{currentTopic}"</p>
             <div className="flex items-center gap-2 mt-2">
               <Flame className="w-4 h-4 text-red-500" />
@@ -44,6 +49,7 @@ const DebateInterface: React.FC = () => {
               </div>
               <span className="text-xs font-mono text-red-500">{argumentHeat}/10</span>
             </div>
+            <AudienceMeter audienceMeter={audienceMeter} speakers={speakers} />
           </div>
         )}
       </header>
@@ -54,18 +60,24 @@ const DebateInterface: React.FC = () => {
           <h2 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300">Speakers</h2>
           <div className="space-y-4">
             {speakers.map((speaker) => (
-              <div key={speaker.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                <SpeakerAvatar
-                  name={speaker.name}
-                  avatarSeed={speaker.avatarSeed}
-                  isSpeaking={activeSpeakerId === speaker.id}
-                  speakerColor={speaker.color}
-                  size="md"
-                />
-                 <span className="font-semibold" style={{ color: speaker.color }}>{speaker.name}</span>
-              </div>
+               <div key={speaker.id} className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                <div className="flex items-center space-x-3">
+                  <SpeakerAvatar
+                    name={speaker.name}
+                    avatarSeed={speaker.avatarSeed}
+                    isSpeaking={activeSpeakerId === speaker.id}
+                    speakerColor={speaker.color}
+                    size="md"
+                  />
+                  <div className="flex-1">
+                    <span className="font-semibold" style={{ color: speaker.color }}>{speaker.name}</span>
+                    {speaker.role === 'debater' && <BelievabilityBar modifier={speaker.believabilityModifier} />}
+                  </div>
+                </div>
+               </div>
             ))}
           </div>
+          <GrudgeMatrix grudgeMatrix={grudgeMatrix} speakers={speakers} />
         </aside>
 
         {/* Main Chat Area */}

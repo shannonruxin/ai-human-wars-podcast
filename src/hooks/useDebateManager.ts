@@ -15,7 +15,33 @@ const useDebateManager = () => {
   const [isDebateFinished, setIsDebateFinished] = useState(false);
   
   const [argumentHeat, setArgumentHeat] = useState(0);
+  const [grudgeMatrix, setGrudgeMatrix] = useState<Record<string, Record<string, number>>>({});
+  const [audienceMeter, setAudienceMeter] = useState<Record<string, number>>({});
+  const [audienceScores, setAudienceScores] = useState<Record<string, number>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    // Normalize scores into percentages for the meter whenever scores change
+    const debaterIds = speakers.filter(s => s.role === 'debater').map(s => s.id);
+    const totalScore = Object.values(audienceScores).reduce((sum, score) => sum + Math.max(0, score), 0);
+
+    if (totalScore === 0) {
+      const equalShare = debaterIds.length > 0 ? 100 / debaterIds.length : 100;
+      const initialMeter = debaterIds.reduce((acc, id) => {
+        acc[id] = equalShare;
+        return acc;
+      }, {} as Record<string, number>);
+      setAudienceMeter(initialMeter);
+      return;
+    }
+
+    const normalized = debaterIds.reduce((acc, id) => {
+      acc[id] = (Math.max(0, audienceScores[id] || 0) / totalScore) * 100;
+      return acc;
+    }, {} as Record<string, number>);
+
+    setAudienceMeter(normalized);
+  }, [audienceScores, speakers]);
 
 
   const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
@@ -56,16 +82,25 @@ const useDebateManager = () => {
     return Math.max(0, Math.min(10, newHeat));
   }
 
-  const findInterrupter = (text: string, currentSpeakerId: string, currentHeat: number): Speaker | null => {
+  const findTriggeredSpeakers = (text: string, currentSpeakerId: string): Speaker[] => {
+    const potentialTargets = speakers.filter(s => s.id !== currentSpeakerId && s.role === 'debater');
+    const lowerCaseText = text.toLowerCase();
+    return potentialTargets.filter(p => 
+      p.triggerWords?.some(word => lowerCaseText.includes(word.toLowerCase()))
+    );
+  };
+
+  const findInterrupter = (text: string, currentSpeakerId: string, currentHeat: number, currentGrudgeMatrix: Record<string, Record<string, number>>): Speaker | null => {
       if (currentHeat <= 6) return null;
 
-      const potentialInterrupters = speakers.filter(s => s.id !== currentSpeakerId);
+      const potentialInterrupters = speakers.filter(s => s.id !== currentSpeakerId && s.role === 'debater');
       const lowerCaseText = text.toLowerCase();
 
       for (const p of potentialInterrupters) {
+          const grudge = currentGrudgeMatrix[p.id]?.[currentSpeakerId] || 0;
           if (p.triggerWords?.some(word => lowerCaseText.includes(word.toLowerCase()))) {
-              if (Math.random() < (p.interruptionProbability || 0)) {
-                  console.log(`${p.name} is interrupting! Triggered by text: "${text}"`);
+              if (Math.random() < ((p.interruptionProbability || 0) + (grudge * 0.2))) { // Grudge increases chance
+                  console.log(`${p.name} is interrupting! Triggered by text: "${text}" with grudge ${grudge}`);
                   return p;
               }
           }
@@ -82,7 +117,8 @@ const useDebateManager = () => {
       targetSpeaker?: Speaker | null;
       debaterNames?: string[];
     },
-    signal: AbortSignal
+    signal: AbortSignal,
+    currentGrudgeMatrix: Record<string, Record<string, number>>
   ): Promise<string> => {
       setActiveSpeakerId(speaker.id);
       const messageId = addMessage(speaker.id, '');
@@ -182,7 +218,7 @@ const useDebateManager = () => {
         // Phase 1: Introduction by Moderator
         if (moderator && !signal.aborted) {
             addMessage('system', 'The moderator will now introduce the topic.');
-            await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal);
+            await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal, {});
         } else {
             addMessage('system', 'No moderator found. Starting debate directly.');
         }
@@ -192,7 +228,7 @@ const useDebateManager = () => {
             addMessage('system', 'Debaters will now greet each other.');
             for (const debater of debaters) {
                 if (signal.aborted) break;
-                await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal);
+                await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal, grudgeMatrix);
             }
         }
         
@@ -206,17 +242,53 @@ const useDebateManager = () => {
                 if (signal.aborted) break;
                 
                 // Normal Turn
-                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'discussion' }, signal);
+                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'discussion' }, signal, grudgeMatrix);
                 if (signal.aborted || !fullText) continue;
                 
+                // Update audience score based on believability
+                setAudienceScores(prev => ({
+                    ...prev,
+                    [speaker.id]: (prev[speaker.id] || 0) + (speaker.believabilityModifier * 2),
+                }));
+
                 const newHeat = calculateNewHeat(argumentHeat, fullText);
                 setArgumentHeat(newHeat);
 
+                // Update grudge based on trigger words
+                const triggeredSpeakers = findTriggeredSpeakers(fullText, speaker.id);
+                if (triggeredSpeakers.length > 0) {
+                    setGrudgeMatrix(prevMatrix => {
+                        const newMatrix = JSON.parse(JSON.stringify(prevMatrix)); // Deep copy
+                        triggeredSpeakers.forEach(ts => {
+                            if (!newMatrix[ts.id]) newMatrix[ts.id] = {};
+                            newMatrix[ts.id][speaker.id] = Math.min(1, (newMatrix[ts.id][speaker.id] || 0) + 0.1);
+                        });
+                        return newMatrix;
+                    });
+                }
+
                 // Interruption Check
-                const interrupter = findInterrupter(fullText, speaker.id, newHeat);
+                const interrupter = findInterrupter(fullText, speaker.id, newHeat, grudgeMatrix);
                 if (interrupter && !signal.aborted) {
                     addMessage('system', `${interrupter.name} interrupts!`);
-                    await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: speaker }, signal);
+                    
+                    // Update audience scores for interruption
+                    setAudienceScores(prev => ({
+                        ...prev,
+                        [interrupter.id]: (prev[interrupter.id] || 0) - 2,
+                        [speaker.id]: (prev[speaker.id] || 0) - 1,
+                    }));
+
+                    // Update grudge matrix for interruption
+                    setGrudgeMatrix(prev => ({
+                        ...prev,
+                        [interrupter.id]: {
+                            ...prev[interrupter.id],
+                            [speaker.id]: Math.min(1, (prev[interrupter.id]?.[speaker.id] || 0) + 0.2), // Interruption adds more grudge
+                        }
+                    }));
+                    
+                    await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: speaker }, signal, grudgeMatrix);
                 }
             }
         }
@@ -234,7 +306,7 @@ const useDebateManager = () => {
           console.log("Debate finished.");
         }
     }
-  }, [speakers, takeTurn, argumentHeat]);
+  }, [speakers, takeTurn, argumentHeat, grudgeMatrix]);
 
   const startDebate = useCallback(async (topic: DebateTopic) => {
     if (isLoading) return;
@@ -248,8 +320,27 @@ const useDebateManager = () => {
     setActiveSpeakerId(null);
     setArgumentHeat(0);
     
+    const debaterIds = speakers.filter(s => s.role === 'debater').map(s => s.id);
+    
+    // Init grudge matrix
+    const initialGrudgeMatrix = debaterIds.reduce((acc, currentId) => {
+      acc[currentId] = debaterIds.reduce((innerAcc, otherId) => {
+        if (currentId !== otherId) innerAcc[otherId] = 0;
+        return innerAcc;
+      }, {} as Record<string, number>);
+      return acc;
+    }, {} as Record<string, Record<string, number>>);
+    setGrudgeMatrix(initialGrudgeMatrix);
+
+    // Init audience scores
+    const initialAudienceScores = debaterIds.reduce((acc, id) => {
+      acc[id] = 10; // Start with 10 points each
+      return acc;
+    }, {} as Record<string, number>);
+    setAudienceScores(initialAudienceScores);
+
     runDebate(topic, abortControllerRef.current.signal);
-  }, [isLoading, runDebate]);
+  }, [isLoading, runDebate, speakers]);
 
   useEffect(() => {
     return () => {
@@ -267,6 +358,8 @@ const useDebateManager = () => {
     argumentHeat,
     startDebate,
     getSpeakerById,
+    grudgeMatrix,
+    audienceMeter,
   };
 };
 

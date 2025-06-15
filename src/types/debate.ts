@@ -16,6 +16,7 @@ export interface Speaker {
   interruptionProbability?: number;
   voiceId?: string; // For future TTS
   color: string; // For UI theming, like the speaking indicator
+  believabilityModifier: number; // Ranges from -1 to +1
 }
 
 export interface Message {
