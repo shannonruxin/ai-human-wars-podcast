@@ -408,20 +408,20 @@ const useDebateManager = () => {
   const stopDebate = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      console.log("Conversation stop requested by user.");
-      
-      const moderator = speakers.find(s => s.role === 'moderator');
-      if (moderator) {
-        addMessage(moderator.id, "Conversation paused by host. Awaiting further instruction.");
-      } else {
-        addMessage('system', "Conversation paused by host.");
-      }
-      
-      setActiveSpeakerId(null);
-      setIsLoading(false);
-      setIsDebateFinished(true); // Treat it as finished for UI purposes
+      console.log("Conversation stop and reset requested by user.");
     }
-  }, [speakers, addMessage]);
+    
+    // Reset all state to initial values
+    setMessages([]);
+    setCurrentTopic(null);
+    setActiveSpeakerId(null);
+    setIsLoading(false);
+    setIsDebateFinished(false);
+    setArgumentHeat(0);
+    setGrudgeMatrix({});
+    setAudienceMeter({});
+    setAudienceScores({});
+  }, []);
 
   const startDebate = useCallback(async (topic: DebateTopic) => {
     if (isLoading) return;
