@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,12 +49,13 @@ const useDebateManager = () => {
 
   const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
 
-  const addMessage = useCallback((speakerId: string, text: string): string => {
+  const addMessage = useCallback((speakerId: string, text: string, targetSpeakerId?: string): string => {
     const newMessage: Message = {
       id: `${Date.now()}-${Math.random()}`,
       speakerId,
       text,
       timestamp: new Date(),
+      targetSpeakerId,
     };
     setMessages(prev => [...prev, newMessage]);
     return newMessage.id;
@@ -207,9 +209,9 @@ const useDebateManager = () => {
     currentGrudgeMatrix: Record<string, Record<string, number>>
   ): Promise<string> => {
       setActiveSpeakerId(speaker.id);
-      const messageId = addMessage(speaker.id, '');
-      let fullText = '';
       const { type, targetSpeaker, debaterNames } = turnConfig;
+      const messageId = addMessage(speaker.id, '', targetSpeaker?.id);
+      let fullText = '';
 
       try {
           console.log(`Invoking llm-debater for ${speaker.name} (Turn type: ${type})`);

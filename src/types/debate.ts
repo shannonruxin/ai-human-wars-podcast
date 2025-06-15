@@ -24,6 +24,7 @@ export interface Message {
   speakerId: string;
   text: string;
   timestamp: Date;
+  targetSpeakerId?: string; // To indicate who the message is addressing
 }
 
 export type DebateTopic = string;

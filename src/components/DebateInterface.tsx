@@ -127,11 +127,13 @@ const DebateInterface: React.FC = () => {
               }
               const speaker = getSpeakerById(msg.speakerId);
               if (!speaker) return null;
+              const targetSpeaker = msg.targetSpeakerId ? getSpeakerById(msg.targetSpeakerId) : null;
               return (
                 <ChatMessage
                   key={msg.id}
                   message={msg}
                   speaker={speaker}
+                  targetSpeaker={targetSpeaker}
                   isCurrentUserSpeaking={activeSpeakerId === msg.speakerId && !isDebateFinished}
                 />
               );
