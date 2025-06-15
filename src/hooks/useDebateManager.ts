@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
 import { supabase } from '@/integrations/supabase/client';
 import { DEBATERS, DEBATE_MAX_ROUNDS } from '@/config/debateConfig';
@@ -12,10 +12,12 @@ const useDebateManager = () => {
 
   const [currentTopic, setCurrentTopic] = useState<DebateTopic | null>(null);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // Used for overall debate state + individual turns
+  const [isLoading, setIsLoading] = useState(false);
   const [isDebateFinished, setIsDebateFinished] = useState(false);
-  const [subTopics, setSubTopics] = useState<string[]>([]);
-  const [currentSubTopic, setCurrentSubTopic] = useState<string | null>(null);
+  
+  const [argumentHeat, setArgumentHeat] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
 
   const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
 
@@ -38,148 +40,193 @@ const useDebateManager = () => {
     );
   }, []);
 
-  const startDebate = useCallback(async (topic: DebateTopic) => {
-    if (isLoading) return; // Prevent multiple debates starting
+  const calculateNewHeat = (currentHeat: number, text: string): number => {
+    const heatKeywords = ["nonsense", "ridiculous", "absurd", "wrong", "clearly mistaken", "laughable", "smug", "condescending", "fail", "garbage"];
+    const coolKeywords = ["agree", "good point", "understand", "valid", "insightful", "interesting"];
+    let heatChange = 0;
+    const lowerCaseText = text.toLowerCase();
     
-    console.log("Starting debate with topic:", topic);
-    setMessages([]); // Clear previous messages
-    setCurrentTopic(topic);
-    setIsDebateFinished(false);
-    setActiveSpeakerId(null);
-    setSubTopics([]);
-    setCurrentSubTopic(null);
-    setIsLoading(true); // Set loading for the entire debate process
+    heatKeywords.forEach(word => {
+      if (lowerCaseText.includes(word)) heatChange++;
+    });
+    coolKeywords.forEach(word => {
+      if (lowerCaseText.includes(word)) heatChange--;
+    });
+    
+    const newHeat = currentHeat + heatChange;
+    return Math.max(0, Math.min(10, newHeat));
+  }
 
+  const findInterrupter = (text: string, currentSpeakerId: string, currentHeat: number): Speaker | null => {
+      if (currentHeat <= 6) return null;
+
+      const potentialInterrupters = speakers.filter(s => s.id !== currentSpeakerId);
+      const lowerCaseText = text.toLowerCase();
+
+      for (const p of potentialInterrupters) {
+          if (p.triggerWords?.some(word => lowerCaseText.includes(word.toLowerCase()))) {
+              if (Math.random() < (p.interruptionProbability || 0)) {
+                  console.log(`${p.name} is interrupting! Triggered by text: "${text}"`);
+                  return p;
+              }
+          }
+      }
+      return null;
+  }
+
+  const takeTurn = useCallback(async (
+      speaker: Speaker,
+      topic: DebateTopic,
+      currentHistory: Message[],
+      isInterruption: boolean,
+      targetSpeaker: Speaker | null,
+      signal: AbortSignal
+  ): Promise<string> => {
+      setActiveSpeakerId(speaker.id);
+      const messageId = addMessage(speaker.id, '');
+      let fullText = '';
+
+      try {
+          console.log(`Invoking llm-debater for ${speaker.name}${isInterruption ? ' (Interruption)' : ''}`);
+
+          const historyForPrompt = currentHistory
+              .filter(m => m.speakerId !== 'system' && m.text)
+              .map(m => {
+                  const messageSpeaker = getSpeakerById(m.speakerId);
+                  return {
+                      speakerId: m.speakerId,
+                      text: m.text,
+                      speakerName: messageSpeaker?.name || m.speakerId,
+                  };
+              });
+
+          let systemPrompt = `Debate Topic: "${topic}"\nCurrent Argument Heat: ${argumentHeat}/10. When heat is over 7, you MUST use a more aggressive, sarcastic, and emotional tone. Use interjections like "Seriously?", "That's just absurd!", or "Oh, please." to show emotion.`.trim();
+
+          if (speaker.promptConfig) {
+            systemPrompt = `${speaker.promptConfig.instructions}\n\nYour specific personality: ${speaker.promptConfig.personality}\n\n${systemPrompt}`;
+          }
+
+          const response = await fetch(`https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`, {
+              method: 'POST',
+              headers: {
+                  ...(supabase.functions as any).headers,
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                  topic,
+                  systemPrompt,
+                  history: historyForPrompt,
+                  isInterruption,
+                  targetSpeakerName: targetSpeaker?.name || null,
+              }),
+              signal,
+          });
+          
+          if (!response.ok) throw new Error(`Edge function error: ${response.status} ${await response.text()}`);
+          if (!response.body) throw new Error("Response body is null");
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          
+          while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (signal.aborted) {
+                reader.cancel();
+                break;
+              }
+
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n').filter(line => line.trim());
+
+              for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                      const data = line.slice(6);
+                      if (data === '[DONE]') break;
+                      try {
+                          const parsed = JSON.parse(data);
+                          const content = parsed.choices?.[0]?.delta?.content;
+                          if (content) {
+                              appendToMessage(messageId, content);
+                              fullText += content;
+                          }
+                      } catch (e) { /* Ignore non-JSON lines */ }
+                  }
+              }
+          }
+      } catch (e: any) {
+          if (e.name !== 'AbortError') {
+            console.error(`Failed to get stream for ${speaker.name}:`, e);
+            const errorText = `_An error occurred: ${e.message}_`;
+            appendToMessage(messageId, errorText);
+            fullText = errorText;
+          }
+      }
+      return fullText;
+  }, [speakers, getSpeakerById, addMessage, appendToMessage, argumentHeat]);
+
+  const runDebate = useCallback(async (topic: DebateTopic, signal: AbortSignal) => {
+    setIsLoading(true);
     addMessage('system', `Starting debate on: "${topic}"`);
 
     try {
-      for (let round = 0; round < DEBATE_MAX_ROUNDS; round++) {
-        console.log(`Starting round ${round + 1}`);
-        for (const speaker of speakers) {
-          console.log(`Speaker ${speaker.name}'s turn.`);
-          setActiveSpeakerId(speaker.id);
-          
-          const messageId = addMessage(speaker.id, '');
+        for (let round = 1; round <= DEBATE_MAX_ROUNDS; round++) {
+            if (signal.aborted) break;
+            addMessage('system', `Round ${round} of ${DEBATE_MAX_ROUNDS} begins.`);
+            for (const speaker of speakers) {
+                if (signal.aborted) break;
+                
+                // Normal Turn
+                const fullText = await takeTurn(speaker, topic, messagesRef.current, false, null, signal);
+                if (signal.aborted || !fullText) continue;
+                
+                const newHeat = calculateNewHeat(argumentHeat, fullText);
+                setArgumentHeat(newHeat);
 
-          try {
-            console.log(`Invoking llm-debater for ${speaker.name}`);
-
-            const history = messagesRef.current
-              .filter(m => m.speakerId !== 'system' && m.text) // Don't include system messages or empty ones
-              .map(m => {
-                const messageSpeaker = getSpeakerById(m.speakerId);
-                return {
-                  speakerId: m.speakerId,
-                  text: m.text,
-                  speakerName: messageSpeaker?.name || m.speakerId,
-                };
-              });
-            
-            console.log(`[useDebateManager] History being sent for ${speaker.name}:`, JSON.stringify(history, null, 2));
-            
-            const functionUrl = `https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`;
-
-            const speakerPromptConfig = speaker.promptConfig;
-            
-            // NOTE: The logic to automatically detect sub-topic shifts is a complex feature for a future step.
-            // For now, this structure allows us to manually guide the focus if we were to set a `currentSubTopic`.
-            const subTopicInfo = currentSubTopic 
-                ? `The current sub-topic is: "${currentSubTopic}". Focus your arguments here.` 
-                : 'You may introduce a new sub-topic if relevant.';
-
-            let systemPrompt = `Debate Topic: "${topic}"\n${subTopicInfo}`.trim();
-
-            if (speakerPromptConfig) {
-              const { instructions, personality, beliefAgree, beliefDisagree, style } = speakerPromptConfig;
-
-              const beliefAgreeText = beliefAgree?.length
-                ? `\n\nCore beliefs you agree with: ${beliefAgree.join(', ')}.`
-                : '';
-
-              const beliefDisagreeText = beliefDisagree?.length
-                ? `\n\nCore beliefs you disagree with: ${beliefDisagree.join(', ')}.`
-                : '';
-
-              const styleText = style
-                ? `\n\nYour communication style: ${style}`
-                : '';
-              
-              systemPrompt = `${instructions}\n\nYour specific personality: ${personality}${beliefAgreeText}${beliefDisagreeText}${styleText}\n\nDebate Topic: "${topic}"\n${subTopicInfo}`.trim();
-            }
-
-
-            const response = await fetch(functionUrl, {
-              method: 'POST',
-              headers: {
-                ...(supabase.functions as any).headers,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                topic: topic,
-                systemPrompt: systemPrompt,
-                history,
-              }),
-            });
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Edge function error: ${response.status} ${errorText}`);
-            }
-
-            if (!response.body) {
-              throw new Error("Response body is null");
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              let lineEnd = buffer.indexOf('\n');
-
-              while (lineEnd !== -1) {
-                const line = buffer.slice(0, lineEnd).trim();
-                buffer = buffer.slice(lineEnd + 1);
-
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6);
-                  if (data === '[DONE]') break;
-                  try {
-                    const parsed = JSON.parse(data);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    if (content) {
-                      appendToMessage(messageId, content);
-                    }
-                  } catch (e) {
-                     // Ignore parsing errors for non-JSON lines
-                  }
+                // Interruption Check
+                const interrupter = findInterrupter(fullText, speaker.id, newHeat);
+                if (interrupter && !signal.aborted) {
+                    addMessage('system', `${interrupter.name} interrupts!`);
+                    await takeTurn(interrupter, topic, messagesRef.current, true, speaker, signal);
                 }
-                lineEnd = buffer.indexOf('\n');
-              }
             }
-
-          } catch (e: any) {
-            console.error(`Failed to get stream for ${speaker.name}:`, e);
-            appendToMessage(messageId, `_An error occurred while getting the response: ${e.message}_`);
-          }
         }
-      }
     } catch (e: any) {
-        console.error("Error during debate execution loop:", e);
-        addMessage('system', `A critical error occurred during the debate: ${e.message}`);
+        if (e.name !== 'AbortError') {
+          console.error("Error during debate execution loop:", e);
+          addMessage('system', `A critical error occurred: ${e.message}`);
+        }
     } finally {
-        addMessage('system', "The debate has concluded. What are your thoughts?");
-        setActiveSpeakerId(null);
-        setIsDebateFinished(true);
-        setIsLoading(false); // Debate finished, clear loading state
-        console.log("Debate finished.");
+        if (!signal.aborted) {
+          addMessage('system', "The debate has concluded. What are your thoughts?");
+          setActiveSpeakerId(null);
+          setIsDebateFinished(true);
+          setIsLoading(false);
+          console.log("Debate finished.");
+        }
     }
+  }, [speakers, takeTurn, argumentHeat]);
 
-  }, [speakers, isLoading, addMessage, getSpeakerById, appendToMessage, currentSubTopic]); // Ensure all dependencies are listed
+  const startDebate = useCallback(async (topic: DebateTopic) => {
+    if (isLoading) return;
+    
+    abortControllerRef.current?.abort(); // Abort previous debate if any
+    abortControllerRef.current = new AbortController();
+    
+    setMessages([]);
+    setCurrentTopic(topic);
+    setIsDebateFinished(false);
+    setActiveSpeakerId(null);
+    setArgumentHeat(0);
+    
+    runDebate(topic, abortControllerRef.current.signal);
+  }, [isLoading, runDebate]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   return {
     speakers,
@@ -188,6 +235,7 @@ const useDebateManager = () => {
     activeSpeakerId,
     isLoading,
     isDebateFinished,
+    argumentHeat,
     startDebate,
     getSpeakerById,
   };

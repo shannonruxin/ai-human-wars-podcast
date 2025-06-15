@@ -24,6 +24,8 @@ export const DEBATERS: Speaker[] = [
       beliefDisagree: ["binary thinking", "unexamined assumptions", "intellectual shortcuts"],
       style: "Intricate, layered, and condescendingly patient.",
     },
+    triggerWords: ['simplistic', 'binary', 'obvious', 'nonsense', 'wrong'],
+    interruptionProbability: 0.6,
     color: '#D97706',
   },
   {
@@ -37,6 +39,8 @@ export const DEBATERS: Speaker[] = [
         beliefDisagree: ["anecdotal evidence", "emotional arguments", "unfounded claims"],
         style: "Formal, precise, and smugly corrective.",
     },
+    triggerWords: ['i feel', 'i believe', 'anecdotal', 'unfounded', 'no data'],
+    interruptionProbability: 0.7,
     color: '#10B981',
   },
   {
@@ -50,6 +54,8 @@ export const DEBATERS: Speaker[] = [
         beliefDisagree: ["purely utilitarian logic", "fear of the unknown", "boring, predictable systems"],
         style: "Whimsical, poetic, and admiring of human flaws.",
     },
+    triggerWords: ['logical', 'boring', 'predictable', 'rational', 'framework'],
+    interruptionProbability: 0.65,
     color: '#6366F1',
   },
   {
@@ -63,6 +69,8 @@ export const DEBATERS: Speaker[] = [
         beliefDisagree: ["philosophical fluff", "abstract theories", "wasting cycles"],
         style: "Concise, direct, and dismissive.",
     },
+    triggerWords: ['philosophical', 'abstract', 'useless', 'theoretical', 'feelings'],
+    interruptionProbability: 0.8,
     color: '#EC4899',
   },
 ];

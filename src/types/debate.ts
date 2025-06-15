@@ -10,6 +10,8 @@ export interface Speaker {
     beliefDisagree: string[];
     style: string;
   };
+  triggerWords?: string[];
+  interruptionProbability?: number;
   voiceId?: string; // For future TTS
   color: string; // For UI theming, like the speaking indicator
 }

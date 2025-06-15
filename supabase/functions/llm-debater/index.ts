@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for fetch to work in Deno environments with some APIs
 
@@ -18,7 +19,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { topic, systemPrompt, history } = await req.json();
+    const { topic, systemPrompt, history, isInterruption, targetSpeakerName } = await req.json();
 
     if (!OPENROUTER_API_KEY) {
       throw new Error("OpenRouter API key is not set in environment variables.");
@@ -30,14 +31,20 @@ serve(async (req: Request) => {
       });
     }
 
-    console.log(`[llm-debater] Received stream request for topic: "${topic}"`);
-    console.log(`[llm-debater] History received:`, JSON.stringify(history, null, 2));
+    console.log(`[llm-debater] Received request for topic: "${topic}"`);
+    if(isInterruption) console.log(`[llm-debater] This is an INTERJECTION targeting ${targetSpeakerName}`);
 
-    const lastSpeakerName = history && history.length > 0 ? history[history.length - 1].speakerName : null;
-    
-    const userContent = lastSpeakerName
-      ? `That was the statement from ${lastSpeakerName}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
-      : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+
+    let userContent = '';
+
+    if (isInterruption) {
+        userContent = `You are interrupting ${targetSpeakerName}. Their last statement has triggered you. You MUST make a short, sharp, angry retort directly addressing their last point. Keep it brief and impactful. Do not give a full monologue. What is your retort?`;
+    } else {
+        const lastSpeakerName = history && history.length > 0 ? history[history.length - 1].speakerName : null;
+        userContent = lastSpeakerName
+          ? `That was the statement from ${lastSpeakerName}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
+          : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+    }
 
     // Construct messages with history
     const messages = [

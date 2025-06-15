@@ -5,7 +5,7 @@ import TopicInput from './TopicInput';
 import SpeakerAvatar from './SpeakerAvatar';
 import useDebateManager from '@/hooks/useDebateManager';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot } from 'lucide-react';
+import { Bot, Flame } from 'lucide-react';
 
 const DebateInterface: React.FC = () => {
   const {
@@ -15,6 +15,7 @@ const DebateInterface: React.FC = () => {
     activeSpeakerId,
     isLoading,
     isDebateFinished,
+    argumentHeat,
     startDebate,
     getSpeakerById,
   } = useDebateManager();
@@ -33,7 +34,18 @@ const DebateInterface: React.FC = () => {
         <h1 className="text-xl font-semibold text-center flex items-center justify-center">
           <Bot className="w-6 h-6 mr-2 text-indigo-500" /> LLM Debate Show
         </h1>
-        {currentTopic && <p className="text-sm text-center text-gray-600 dark:text-gray-400 mt-1">Topic: "{currentTopic}"</p>}
+        {currentTopic && (
+          <div className="max-w-md mx-auto mt-2">
+            <p className="text-sm text-center text-gray-600 dark:text-gray-400">Topic: "{currentTopic}"</p>
+            <div className="flex items-center gap-2 mt-2">
+              <Flame className="w-4 h-4 text-red-500" />
+              <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${argumentHeat * 10}%` }}></div>
+              </div>
+              <span className="text-xs font-mono text-red-500">{argumentHeat}/10</span>
+            </div>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -50,7 +62,7 @@ const DebateInterface: React.FC = () => {
                   speakerColor={speaker.color}
                   size="md"
                 />
-                {/* Personality can be shown in a tooltip or small text later */}
+                 <span className="font-semibold" style={{ color: speaker.color }}>{speaker.name}</span>
               </div>
             ))}
           </div>
