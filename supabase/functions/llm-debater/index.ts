@@ -66,6 +66,9 @@ serve(async (req: Request) => {
         provider: {
           only: ["deepinfra"],
         },
+        deepinfra: {
+          precision: "bf16",
+        },
       }),
     });
 
