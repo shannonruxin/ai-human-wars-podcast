@@ -408,19 +408,13 @@ const useDebateManager = () => {
   const stopDebate = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      console.log("Conversation stop and reset requested by user.");
+      console.log("Conversation stop requested by user.");
     }
     
-    // Reset all state to initial values
-    setMessages([]);
-    setCurrentTopic(null);
+    // Just stop the debate, don't clear the state
     setActiveSpeakerId(null);
     setIsLoading(false);
-    setIsDebateFinished(false);
-    setArgumentHeat(0);
-    setGrudgeMatrix({});
-    setAudienceMeter({});
-    setAudienceScores({});
+    setIsDebateFinished(true); // Mark as finished to allow starting a new one
   }, []);
 
   const startDebate = useCallback(async (topic: DebateTopic) => {
@@ -429,6 +423,7 @@ const useDebateManager = () => {
     abortControllerRef.current?.abort(); // Abort previous debate if any
     abortControllerRef.current = new AbortController();
     
+    // Reset all state to initial values for the new debate
     setMessages([]);
     setCurrentTopic(topic);
     setIsDebateFinished(false);
