@@ -1,3 +1,4 @@
+
 # Welcome to your Lovable project
 
 ## Project info
@@ -18,9 +19,15 @@ Changes made via Lovable will be committed automatically to this repo.
 
 If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Prerequisites
 
-Follow these steps:
+- [Node.js & npm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- [Docker](https://docs.docker.com/get-docker/) (for running the backend locally)
+- [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)
+
+### Local Development Setup
+
+Follow these steps to run the full application (frontend and backend) locally:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
@@ -29,12 +36,26 @@ git clone <YOUR_GIT_URL>
 # Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
+# Step 3: Install the frontend dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Login to Supabase CLI (only required once).
+supabase login
+
+# Step 5: Link your local project to your Supabase project (only required once).
+# Your project ID is ikdqbiumciskarxwooln
+supabase link --project-ref <YOUR_PROJECT_ID>
+
+# Step 6: Start the Supabase services (database, edge functions, etc.).
+# This will run Docker containers on your machine.
+supabase start
+
+# Step 7: In a separate terminal, start the frontend development server.
+# This provides auto-reloading and an instant preview.
 npm run dev
 ```
+
+After running `supabase start`, the CLI will output the local API URL and keys. The frontend is already configured to use these when running in development mode.
 
 **Edit a file directly in GitHub**
 
