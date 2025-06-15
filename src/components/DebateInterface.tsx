@@ -25,6 +25,9 @@ const DebateInterface: React.FC = () => {
     startDebate,
     stopDebate,
     getSpeakerById,
+    isPaused,
+    resumeDebate,
+    endSession,
   } = useDebateManager();
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -43,15 +46,22 @@ const DebateInterface: React.FC = () => {
             <h1 className="text-xl font-semibold text-center flex items-center justify-center whitespace-nowrap">
               <Bot className="w-6 h-6 mr-2 text-indigo-500" /> LLM Debate Show
             </h1>
-            <div className="w-1/4 flex justify-end">
-              {isLoading && !isDebateFinished && (
+            <div className="w-1/4 flex justify-end items-center gap-2">
+              {isPaused && currentTopic && (
+                <>
+                  <Button onClick={resumeDebate} variant="outline" size="sm">Resume</Button>
+                  <Button onClick={() => startDebate(currentTopic)} variant="secondary" size="sm">Restart</Button>
+                  <Button onClick={endSession} variant="destructive" size="sm">End Session</Button>
+                </>
+              )}
+              {isLoading && !isPaused && (
                 <Button onClick={stopDebate} variant="destructive" size="sm">
                   Stop Conversation
                 </Button>
               )}
             </div>
         </div>
-        {currentTopic && (
+        {currentTopic && !isPaused && (
           <div className="max-w-2xl mx-auto mt-2">
             <p className="text-sm text-center text-gray-600 dark:text-gray-400">Topic: "{currentTopic}"</p>
             <div className="flex items-center gap-2 mt-2">
@@ -64,6 +74,11 @@ const DebateInterface: React.FC = () => {
             <AudienceMeter audienceMeter={audienceMeter} speakers={speakers} />
           </div>
         )}
+         {isPaused && currentTopic && (
+           <div className="text-center mt-2 text-sm text-yellow-600 dark:text-yellow-400">
+             Conversation paused.
+           </div>
+         )}
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -128,7 +143,7 @@ const DebateInterface: React.FC = () => {
               </div>
             )}
           </ScrollArea>
-          <TopicInput onStartDebate={startDebate} isLoading={isLoading} />
+          <TopicInput onStartDebate={startDebate} isLoading={isLoading || isPaused} />
         </main>
       </div>
     </div>

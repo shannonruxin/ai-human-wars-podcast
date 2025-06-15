@@ -20,6 +20,9 @@ const useDebateManager = () => {
   const [audienceScores, setAudienceScores] = useState<Record<string, number>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const [isPaused, setIsPaused] = useState(false);
+  const [lastSpeakerId, setLastSpeakerId] = useState<string | null>(null);
+
   useEffect(() => {
     // Normalize scores into percentages for the meter whenever scores change
     const debaterIds = speakers.filter(s => s.role === 'debater').map(s => s.id);
@@ -125,16 +128,16 @@ const useDebateManager = () => {
         return -1;
       };
 
-      // Moderator intervention logic
+      // Moderator intervention logic - now more likely to participate
       const moderator = participants.find(p => p.role === 'moderator');
       if (moderator && moderator.id !== lastSpeaker?.id) {
-          let moderatorUrgency = 0;
+          let moderatorUrgency = 0.1; // Base chance to chime in
           if (currentHeat > 8) moderatorUrgency += 0.5; // High heat
           if (Object.values(currentGrudgeMatrix).some(grudges => Object.values(grudges).some(g => g > 0.7))) {
               moderatorUrgency += 0.5; // High grudge
           }
           if (Math.random() < moderatorUrgency) {
-              console.log("Moderator intervenes due to high tension.");
+              console.log("Moderator intervenes or participates.");
               return moderator;
           }
       }
@@ -142,7 +145,7 @@ const useDebateManager = () => {
       const potentialSpeakers = participants.filter(p => p.id !== lastSpeaker?.id);
       
       for (const speaker of potentialSpeakers) {
-          if (speaker.role === 'moderator') continue; // Moderator only speaks on intervention logic for now
+          // Moderator can now be chosen via regular scoring, making them an active participant.
           let score = Math.random() * 0.2; // Base randomness
   
           // Grudge factor
@@ -224,6 +227,10 @@ const useDebateManager = () => {
 
           let systemPrompt = `Debate Topic: "${topic}"\nCurrent Argument Heat: ${argumentHeat}/10. When heat is over 7, you MUST use a more aggressive, sarcastic, and emotional tone. Use interjections like "Seriously?", "That's just absurd!", or "Oh, please." to show emotion.`.trim();
 
+          if (speaker.role === 'moderator') {
+            systemPrompt += `\nYou are not just a host, but an active participant. Share your own perspective, ask clarifying questions, or mediate when things get heated. Your goal is to foster a dynamic and insightful conversation, not just enforce rules.`;
+          }
+
           if (speaker.promptConfig) {
             systemPrompt = `${speaker.promptConfig.instructions}\n\nYour Origin Story: ${speaker.promptConfig.origin}\n\nYour specific personality: ${speaker.promptConfig.personality}\n\n${systemPrompt}`;
           }
@@ -289,37 +296,42 @@ const useDebateManager = () => {
       return fullText;
   }, [speakers, getSpeakerById, addMessage, appendToMessage, argumentHeat]);
 
-  const runDebate = useCallback(async (topic: DebateTopic, signal: AbortSignal) => {
+  const runDebate = useCallback(async (topic: DebateTopic, signal: AbortSignal, startPhase: 'introduction' | 'discussion' = 'introduction') => {
     setIsLoading(true);
-    addMessage('system', `Podcast episode starting on: "${topic}"`);
+    setIsPaused(false);
+
+    if (startPhase === 'introduction') {
+      addMessage('system', `Podcast episode starting on: "${topic}"`);
+    }
 
     const moderator = speakers.find(s => s.role === 'moderator');
     const debaters = speakers.filter(s => s.role === 'debater');
     const allParticipants = [...speakers];
     const debaterNames = debaters.map(d => d.name);
-    let lastSpeakerId: string | null = null;
 
     try {
-        // Phase 1: Introduction by Moderator
-        if (moderator && !signal.aborted) {
-            addMessage('system', 'The moderator will now introduce the topic.');
-            await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal, {});
-            lastSpeakerId = moderator.id;
-        } else {
-            addMessage('system', 'No moderator found. Starting debate directly.');
-        }
-
-        // Phase 2: Greetings from Debaters
-        if (!signal.aborted) {
-            addMessage('system', 'Debaters will now greet each other.');
-            for (const debater of debaters) {
-                if (signal.aborted) break;
-                await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal, grudgeMatrix);
-                lastSpeakerId = debater.id;
+        if (startPhase === 'introduction') {
+            // Phase 1: Introduction by Moderator
+            if (moderator && !signal.aborted) {
+                addMessage('system', 'The moderator will now introduce the topic.');
+                await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal, {});
+                setLastSpeakerId(moderator.id);
+            } else {
+                addMessage('system', 'No moderator found. Starting debate directly.');
             }
+
+            // Phase 2: Greetings from Debaters
+            if (!signal.aborted) {
+                addMessage('system', 'Debaters will now greet each other.');
+                for (const debater of debaters) {
+                    if (signal.aborted) break;
+                    await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal, grudgeMatrix);
+                    setLastSpeakerId(debater.id);
+                }
+            }
+            
+            addMessage('system', `The open conversation begins now.`);
         }
-        
-        addMessage('system', `The open conversation begins now.`);
 
         // Phase 3: Fluid Conversation Loop
         let turnCount = 0;
@@ -340,7 +352,7 @@ const useDebateManager = () => {
             const fullText = await takeTurn(nextSpeaker, topic, messagesRef.current, { type: 'discussion', targetSpeaker: lastSpeaker }, signal, grudgeMatrix);
             if (signal.aborted || !fullText) continue;
             
-            lastSpeakerId = nextSpeaker.id;
+            setLastSpeakerId(nextSpeaker.id);
 
             // Update audience score based on believability
             if (nextSpeaker.role === 'debater') {
@@ -385,7 +397,7 @@ const useDebateManager = () => {
                 
                 const interruptionText = await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: nextSpeaker }, signal, grudgeMatrix);
                 if (interruptionText) {
-                    lastSpeakerId = interrupter.id;
+                    setLastSpeakerId(interrupter.id);
                 }
             }
         }
@@ -395,7 +407,7 @@ const useDebateManager = () => {
           addMessage('system', `A critical error occurred: ${e.message}`);
         }
     } finally {
-        if (!signal.aborted) {
+        if (!signal.aborted && !isPaused) {
           addMessage('system', "The debate has concluded. What are your thoughts?");
           setActiveSpeakerId(null);
           setIsDebateFinished(true);
@@ -403,22 +415,50 @@ const useDebateManager = () => {
         setIsLoading(false);
         console.log("Debate finished or stopped.");
     }
-  }, [speakers, takeTurn, argumentHeat, grudgeMatrix, getSpeakerById]);
+  }, [speakers, takeTurn, argumentHeat, grudgeMatrix, getSpeakerById, lastSpeakerId, isPaused]);
 
-  const stopDebate = useCallback(() => {
+  const stopDebate = useCallback(() => { // This is now PAUSE
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      console.log("Conversation stop requested by user.");
+      console.log("Conversation pause requested by user.");
     }
     
-    // Just stop the debate, don't clear the state
-    setActiveSpeakerId(null);
     setIsLoading(false);
-    setIsDebateFinished(true); // Mark as finished to allow starting a new one
-  }, []);
+    setIsPaused(true);
+    setActiveSpeakerId(null);
 
-  const startDebate = useCallback(async (topic: DebateTopic) => {
-    if (isLoading) return;
+    const moderator = speakers.find(s => s.role === 'moderator');
+    const moderatorMessage = "Host has paused the chat. Let me know when we’re ready to continue.";
+    if (moderator) {
+        addMessage(moderator.id, moderatorMessage);
+    } else {
+        addMessage('system', moderatorMessage);
+    }
+  }, [speakers, addMessage]);
+
+  const resumeDebate = useCallback(async () => {
+    if (!isPaused || !currentTopic) return;
+
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    addMessage('system', 'Resuming conversation...');
+    
+    // We continue the discussion phase
+    runDebate(currentTopic, abortControllerRef.current.signal, 'discussion');
+  }, [isPaused, currentTopic, runDebate, addMessage]);
+  
+  const endSession = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setIsLoading(false);
+    setIsPaused(false);
+    setIsDebateFinished(true);
+    setActiveSpeakerId(null);
+    addMessage('system', "The session has been ended by the host.");
+  }, [addMessage]);
+
+  const startDebate = useCallback(async (topic: DebateTopic) => { // This is RESTART
+    if (isLoading && !isPaused) return;
     
     abortControllerRef.current?.abort(); // Abort previous debate if any
     abortControllerRef.current = new AbortController();
@@ -427,8 +467,10 @@ const useDebateManager = () => {
     setMessages([]);
     setCurrentTopic(topic);
     setIsDebateFinished(false);
+    setIsPaused(false);
     setActiveSpeakerId(null);
     setArgumentHeat(0);
+    setLastSpeakerId(null);
     
     const debaterIds = speakers.filter(s => s.role === 'debater').map(s => s.id);
     
@@ -449,8 +491,8 @@ const useDebateManager = () => {
     }, {} as Record<string, number>);
     setAudienceScores(initialAudienceScores);
 
-    runDebate(topic, abortControllerRef.current.signal);
-  }, [isLoading, runDebate, speakers]);
+    runDebate(topic, abortControllerRef.current.signal, 'introduction');
+  }, [isLoading, runDebate, speakers, isPaused]);
 
   useEffect(() => {
     return () => {
@@ -471,6 +513,9 @@ const useDebateManager = () => {
     getSpeakerById,
     grudgeMatrix,
     audienceMeter,
+    isPaused,
+    resumeDebate,
+    endSession,
   };
 };
 
