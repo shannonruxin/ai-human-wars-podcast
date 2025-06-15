@@ -9,6 +9,7 @@ import { Bot, Flame } from 'lucide-react';
 import AudienceMeter from './AudienceMeter';
 import GrudgeMatrix from './GrudgeMatrix';
 import BelievabilityBar from './BelievabilityBar';
+import { Button } from '@/components/ui/button';
 
 const DebateInterface: React.FC = () => {
   const {
@@ -22,6 +23,7 @@ const DebateInterface: React.FC = () => {
     grudgeMatrix,
     audienceMeter,
     startDebate,
+    stopDebate,
     getSpeakerById,
   } = useDebateManager();
 
@@ -36,9 +38,19 @@ const DebateInterface: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <header className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
-        <h1 className="text-xl font-semibold text-center flex items-center justify-center">
-          <Bot className="w-6 h-6 mr-2 text-indigo-500" /> LLM Debate Show
-        </h1>
+        <div className="flex items-center justify-between max-w-4xl mx-auto">
+            <div className="w-1/4"></div> {/* Left spacer */}
+            <h1 className="text-xl font-semibold text-center flex items-center justify-center whitespace-nowrap">
+              <Bot className="w-6 h-6 mr-2 text-indigo-500" /> LLM Debate Show
+            </h1>
+            <div className="w-1/4 flex justify-end">
+              {isLoading && !isDebateFinished && (
+                <Button onClick={stopDebate} variant="destructive" size="sm">
+                  Stop Conversation
+                </Button>
+              )}
+            </div>
+        </div>
         {currentTopic && (
           <div className="max-w-2xl mx-auto mt-2">
             <p className="text-sm text-center text-gray-600 dark:text-gray-400">Topic: "{currentTopic}"</p>

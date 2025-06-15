@@ -43,7 +43,6 @@ const useDebateManager = () => {
     setAudienceMeter(normalized);
   }, [audienceScores, speakers]);
 
-
   const getSpeakerById = useCallback((s: string) => speakers.find(p => p.id === s), [speakers]);
 
   const addMessage = useCallback((speakerId: string, text: string): string => {
@@ -106,6 +105,90 @@ const useDebateManager = () => {
           }
       }
       return null;
+  }
+
+  const determineNextSpeaker = (
+    participants: Speaker[],
+    lastSpeaker: Speaker | null,
+    currentGrudgeMatrix: Record<string, Record<string, number>>,
+    currentHeat: number,
+    currentHistory: Message[]
+  ): Speaker | null => {
+      const speakerScores: Record<string, number> = {};
+      const lastMessageText = currentHistory.length > 0 ? currentHistory[currentHistory.length - 1].text.toLowerCase() : '';
+  
+      const findLastIndex = (array: any[], predicate: (value: any, index: number, obj: any[]) => boolean) => {
+        let l = array.length;
+        while (l--) {
+            if (predicate(array[l], l, array)) return l;
+        }
+        return -1;
+      };
+
+      // Moderator intervention logic
+      const moderator = participants.find(p => p.role === 'moderator');
+      if (moderator && moderator.id !== lastSpeaker?.id) {
+          let moderatorUrgency = 0;
+          if (currentHeat > 8) moderatorUrgency += 0.5; // High heat
+          if (Object.values(currentGrudgeMatrix).some(grudges => Object.values(grudges).some(g => g > 0.7))) {
+              moderatorUrgency += 0.5; // High grudge
+          }
+          if (Math.random() < moderatorUrgency) {
+              console.log("Moderator intervenes due to high tension.");
+              return moderator;
+          }
+      }
+  
+      const potentialSpeakers = participants.filter(p => p.id !== lastSpeaker?.id);
+      
+      for (const speaker of potentialSpeakers) {
+          if (speaker.role === 'moderator') continue; // Moderator only speaks on intervention logic for now
+          let score = Math.random() * 0.2; // Base randomness
+  
+          // Grudge factor
+          if (lastSpeaker && currentGrudgeMatrix[speaker.id]?.[lastSpeaker.id]) {
+              score += currentGrudgeMatrix[speaker.id][lastSpeaker.id] * 0.5;
+          }
+  
+          // Ping factor
+          if (lastMessageText.includes(speaker.name.toLowerCase())) {
+              score += 0.8; // High priority if pinged
+              console.log(`${speaker.name} was pinged!`);
+          }
+  
+          // Believability factor - more believable speakers are more eager to jump in
+          score += speaker.believabilityModifier * 0.1;
+  
+          // Time since last spoken (to avoid someone dominating)
+          const lastTurnIndex = findLastIndex(currentHistory, msg => msg.speakerId === speaker.id);
+          if(lastTurnIndex > -1) {
+              const turnsSinceSpoken = currentHistory.length - lastTurnIndex;
+              score += Math.log(turnsSinceSpoken + 1) * 0.1; // Log scale to give a gentle nudge
+          } else {
+              score += 0.2; // Bonus for speakers who haven't spoken yet
+          }
+  
+          speakerScores[speaker.id] = score;
+      }
+      
+      let nextSpeakerId: string | null = null;
+      let maxScore = -1;
+      for (const speakerId in speakerScores) {
+          if (speakerScores[speakerId] > maxScore) {
+              maxScore = speakerScores[speakerId];
+              nextSpeakerId = speakerId;
+          }
+      }
+      
+      if (!nextSpeakerId) {
+          return potentialSpeakers.filter(p=>p.role !== 'moderator')[Math.floor(Math.random() * potentialSpeakers.filter(p=>p.role !== 'moderator').length)];
+      }
+  
+      console.log("Speaker scores:", speakerScores);
+      const chosenOne = participants.find(p => p.id === nextSpeakerId);
+      console.log(`Next speaker determined: ${chosenOne?.name} with score ${maxScore}`);
+  
+      return chosenOne || null;
   }
 
   const takeTurn = useCallback(async (
@@ -211,14 +294,17 @@ const useDebateManager = () => {
     addMessage('system', `Podcast episode starting on: "${topic}"`);
 
     const moderator = speakers.find(s => s.role === 'moderator');
-    const debaters = speakers.filter(s => s.role !== 'moderator');
+    const debaters = speakers.filter(s => s.role === 'debater');
+    const allParticipants = [...speakers];
     const debaterNames = debaters.map(d => d.name);
+    let lastSpeakerId: string | null = null;
 
     try {
         // Phase 1: Introduction by Moderator
         if (moderator && !signal.aborted) {
             addMessage('system', 'The moderator will now introduce the topic.');
             await takeTurn(moderator, topic, messagesRef.current, { type: 'introduction', debaterNames }, signal, {});
+            lastSpeakerId = moderator.id;
         } else {
             addMessage('system', 'No moderator found. Starting debate directly.');
         }
@@ -229,66 +315,77 @@ const useDebateManager = () => {
             for (const debater of debaters) {
                 if (signal.aborted) break;
                 await takeTurn(debater, topic, messagesRef.current, { type: 'greeting' }, signal, grudgeMatrix);
+                lastSpeakerId = debater.id;
             }
         }
         
-        addMessage('system', `The formal debate begins now.`);
+        addMessage('system', `The open conversation begins now.`);
 
-        // Phase 3: Main Debate Rounds
-        for (let round = 1; round <= DEBATE_MAX_ROUNDS; round++) {
-            if (signal.aborted) break;
-            addMessage('system', `Round ${round} of ${DEBATE_MAX_ROUNDS} begins.`);
-            for (const speaker of debaters) { // Loop over debaters only
-                if (signal.aborted) break;
-                
-                // Normal Turn
-                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'discussion' }, signal, grudgeMatrix);
-                if (signal.aborted || !fullText) continue;
-                
-                // Update audience score based on believability
+        // Phase 3: Fluid Conversation Loop
+        let turnCount = 0;
+        const MAX_TURNS = DEBATE_MAX_ROUNDS * debaters.length; // Failsafe
+
+        while (!signal.aborted && turnCount < MAX_TURNS) {
+            turnCount++;
+            
+            const lastSpeaker = lastSpeakerId ? getSpeakerById(lastSpeakerId) : null;
+            const nextSpeaker = determineNextSpeaker(allParticipants, lastSpeaker, grudgeMatrix, argumentHeat, messagesRef.current);
+            
+            if (!nextSpeaker) {
+                addMessage('system', 'Conversation has stalled. Ending debate.');
+                break;
+            }
+
+            // Normal Turn
+            const fullText = await takeTurn(nextSpeaker, topic, messagesRef.current, { type: 'discussion', targetSpeaker: lastSpeaker }, signal, grudgeMatrix);
+            if (signal.aborted || !fullText) continue;
+            
+            lastSpeakerId = nextSpeaker.id;
+
+            // Update audience score based on believability
+            if (nextSpeaker.role === 'debater') {
                 setAudienceScores(prev => ({
                     ...prev,
-                    [speaker.id]: (prev[speaker.id] || 0) + (speaker.believabilityModifier * 2),
+                    [nextSpeaker.id]: (prev[nextSpeaker.id] || 0) + (nextSpeaker.believabilityModifier * 2),
+                }));
+            }
+
+            const newHeat = calculateNewHeat(argumentHeat, fullText);
+            setArgumentHeat(newHeat);
+
+            const triggeredSpeakers = findTriggeredSpeakers(fullText, nextSpeaker.id);
+            if (triggeredSpeakers.length > 0) {
+                setGrudgeMatrix(prevMatrix => {
+                    const newMatrix = JSON.parse(JSON.stringify(prevMatrix)); // Deep copy
+                    triggeredSpeakers.forEach(ts => {
+                        if (!newMatrix[ts.id]) newMatrix[ts.id] = {};
+                        newMatrix[ts.id][nextSpeaker.id] = Math.min(1, (newMatrix[ts.id][nextSpeaker.id] || 0) + 0.1);
+                    });
+                    return newMatrix;
+                });
+            }
+
+            const interrupter = findInterrupter(fullText, nextSpeaker.id, newHeat, grudgeMatrix);
+            if (interrupter && !signal.aborted) {
+                addMessage('system', `${interrupter.name} interrupts!`);
+                
+                setAudienceScores(prev => ({
+                    ...prev,
+                    [interrupter.id]: (prev[interrupter.id] || 0) - 2,
+                    [nextSpeaker.id]: (prev[nextSpeaker.id] || 0) - 1,
                 }));
 
-                const newHeat = calculateNewHeat(argumentHeat, fullText);
-                setArgumentHeat(newHeat);
-
-                // Update grudge based on trigger words
-                const triggeredSpeakers = findTriggeredSpeakers(fullText, speaker.id);
-                if (triggeredSpeakers.length > 0) {
-                    setGrudgeMatrix(prevMatrix => {
-                        const newMatrix = JSON.parse(JSON.stringify(prevMatrix)); // Deep copy
-                        triggeredSpeakers.forEach(ts => {
-                            if (!newMatrix[ts.id]) newMatrix[ts.id] = {};
-                            newMatrix[ts.id][speaker.id] = Math.min(1, (newMatrix[ts.id][speaker.id] || 0) + 0.1);
-                        });
-                        return newMatrix;
-                    });
-                }
-
-                // Interruption Check
-                const interrupter = findInterrupter(fullText, speaker.id, newHeat, grudgeMatrix);
-                if (interrupter && !signal.aborted) {
-                    addMessage('system', `${interrupter.name} interrupts!`);
-                    
-                    // Update audience scores for interruption
-                    setAudienceScores(prev => ({
-                        ...prev,
-                        [interrupter.id]: (prev[interrupter.id] || 0) - 2,
-                        [speaker.id]: (prev[speaker.id] || 0) - 1,
-                    }));
-
-                    // Update grudge matrix for interruption
-                    setGrudgeMatrix(prev => ({
-                        ...prev,
-                        [interrupter.id]: {
-                            ...prev[interrupter.id],
-                            [speaker.id]: Math.min(1, (prev[interrupter.id]?.[speaker.id] || 0) + 0.2), // Interruption adds more grudge
-                        }
-                    }));
-                    
-                    await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: speaker }, signal, grudgeMatrix);
+                setGrudgeMatrix(prev => ({
+                    ...prev,
+                    [interrupter.id]: {
+                        ...prev[interrupter.id],
+                        [nextSpeaker.id]: Math.min(1, (prev[interrupter.id]?.[nextSpeaker.id] || 0) + 0.2),
+                    }
+                }));
+                
+                const interruptionText = await takeTurn(interrupter, topic, messagesRef.current, { type: 'interruption', targetSpeaker: nextSpeaker }, signal, grudgeMatrix);
+                if (interruptionText) {
+                    lastSpeakerId = interrupter.id;
                 }
             }
         }
@@ -302,11 +399,29 @@ const useDebateManager = () => {
           addMessage('system', "The debate has concluded. What are your thoughts?");
           setActiveSpeakerId(null);
           setIsDebateFinished(true);
-          setIsLoading(false);
-          console.log("Debate finished.");
         }
+        setIsLoading(false);
+        console.log("Debate finished or stopped.");
     }
-  }, [speakers, takeTurn, argumentHeat, grudgeMatrix]);
+  }, [speakers, takeTurn, argumentHeat, grudgeMatrix, getSpeakerById]);
+
+  const stopDebate = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      console.log("Conversation stop requested by user.");
+      
+      const moderator = speakers.find(s => s.role === 'moderator');
+      if (moderator) {
+        addMessage(moderator.id, "Conversation paused by host. Awaiting further instruction.");
+      } else {
+        addMessage('system', "Conversation paused by host.");
+      }
+      
+      setActiveSpeakerId(null);
+      setIsLoading(false);
+      setIsDebateFinished(true); // Treat it as finished for UI purposes
+    }
+  }, [speakers, addMessage]);
 
   const startDebate = useCallback(async (topic: DebateTopic) => {
     if (isLoading) return;
@@ -357,6 +472,7 @@ const useDebateManager = () => {
     isDebateFinished,
     argumentHeat,
     startDebate,
+    stopDebate,
     getSpeakerById,
     grudgeMatrix,
     audienceMeter,
