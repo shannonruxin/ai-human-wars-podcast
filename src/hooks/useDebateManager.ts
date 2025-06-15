@@ -79,7 +79,7 @@ const useDebateManager = () => {
     topic: DebateTopic,
     currentHistory: Message[],
     turnConfig: {
-      type: 'introduction' | 'greeting' | 'debate' | 'interruption';
+      type: 'introduction' | 'greeting' | 'discussion' | 'interruption';
       targetSpeaker?: Speaker | null;
       debaterNames?: string[];
     },
@@ -207,7 +207,7 @@ const useDebateManager = () => {
                 if (signal.aborted) break;
                 
                 // Normal Turn
-                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'debate' }, signal);
+                const fullText = await takeTurn(speaker, topic, messagesRef.current, { type: 'discussion' }, signal);
                 if (signal.aborted || !fullText) continue;
                 
                 const newHeat = calculateNewHeat(argumentHeat, fullText);

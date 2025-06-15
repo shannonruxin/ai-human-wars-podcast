@@ -50,14 +50,14 @@ Please provide a compelling opening statement to kick off the podcast episode. W
             userContent = `That was ${lastSpeakerNameGreeting}. It's your turn to speak. Please offer a brief greeting to the moderator and your fellow debaters. Keep it short and professional, perhaps with a hint of your personality.`;
             break;
         case 'interruption':
-            userContent = `You are interrupting ${targetSpeakerName}. Their last statement has triggered you. You MUST make a short, sharp, angry retort directly addressing their last point. Keep it brief and impactful. Do not give a full monologue. What is your retort?`;
+            userContent = `You are interrupting ${targetSpeakerName}. Their last statement has triggered a strong reaction in you. You MUST make a short, sharp, passionate interjection directly addressing their last point. Keep it brief and impactful. Do not give a full monologue. What is your interjection?`;
             break;
-        case 'debate':
+        case 'discussion':
         default:
-            const lastSpeakerNameDebate = history && history.length > 0 ? history[history.length - 1].speakerName : null;
-            userContent = lastSpeakerNameDebate
-              ? `That was the statement from ${lastSpeakerNameDebate}. Now it is your turn. You MUST start by directly addressing their argument before making your own points. Refute, deconstruct, or build upon what they just said. What is your response?`
-              : `You are the first speaker in this debate on "${topic}". Please provide your opening arguments. It is your turn to speak now.`;
+            const lastSpeakerNameDiscussion = history && history.length > 0 ? history[history.length - 1].speakerName : null;
+            userContent = lastSpeakerNameDiscussion
+              ? `That was the statement from ${lastSpeakerNameDiscussion}. Now it is your turn. Please share your thoughts. You should start by directly addressing their point before making your own. Discuss, challenge, or build upon what they just said. What is your response?`
+              : `You are the first speaker in this discussion on "${topic}". Please provide your opening thoughts. It is your turn to speak now.`;
             break;
     }
 

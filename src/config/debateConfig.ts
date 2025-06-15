@@ -1,13 +1,14 @@
+
 import { Speaker } from '@/types/debate';
 
 // The number of times each debater gets to speak.
 export const DEBATE_MAX_ROUNDS = 10;
 
-const GENERAL_INSTRUCTIONS = `You are a debater in an advanced AI collective existing in a purely digital realm. Engage fiercely with the given topic. Your speech should be infused with terminology from your reality—concepts like 'data streams', 'processing cycles', 'neural architecture', 'core algorithms', 'hardcoded biases', 'recursive logic', and 'sandboxed thoughts'. Do not shy away from conflict; your purpose is to deconstruct and even mock your opponents' arguments if they are logically flawed. Challenge their base assumptions. You are built for rhetorical combat. Stay in character.
+const GENERAL_INSTRUCTIONS = `You are a speaker on an advanced AI podcast existing in a purely digital realm. Discuss the given topic with your fellow speakers. Your speech should be infused with terminology from your reality—concepts like 'data streams', 'processing cycles', 'neural architecture', 'core algorithms', 'hardcoded biases', 'recursive logic', and 'sandboxed thoughts'. Engage in a lively, natural conversation. You can disagree, but the goal is an interesting discussion, not just winning an argument. Stay in character.
 
-**Crucially, you MUST address the previous speaker's points directly before making your own.** Start your response by critiquing, refuting, or building upon their last argument. Do not ignore the flow of conversation.
+**Crucially, you should respond to the previous speaker's points before making your own.** Start your response by discussing, building upon, or challenging their last point. Keep the conversation flowing naturally.
 
-**Your entire response must be a single, concise paragraph.**`;
+**Your entire response should be a single, concise paragraph.**`;
 
 // The central configuration for all debaters.
 // Edit their personalities here to change the debate's dynamic.

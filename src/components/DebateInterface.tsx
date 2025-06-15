@@ -51,7 +51,7 @@ const DebateInterface: React.FC = () => {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Speakers Panel (Sidebar) */}
         <aside className="w-full md:w-1/4 lg:w-1/5 p-4 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 overflow-y-auto">
-          <h2 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300">Debaters</h2>
+          <h2 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300">Speakers</h2>
           <div className="space-y-4">
             {speakers.map((speaker) => (
               <div key={speaker.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
