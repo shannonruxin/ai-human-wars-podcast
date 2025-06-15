@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Speaker, Message, DebateTopic } from '@/types/debate';
 import { supabase } from '@/integrations/supabase/client';
@@ -107,7 +106,7 @@ const useDebateManager = () => {
           let systemPrompt = `Debate Topic: "${topic}"\nCurrent Argument Heat: ${argumentHeat}/10. When heat is over 7, you MUST use a more aggressive, sarcastic, and emotional tone. Use interjections like "Seriously?", "That's just absurd!", or "Oh, please." to show emotion.`.trim();
 
           if (speaker.promptConfig) {
-            systemPrompt = `${speaker.promptConfig.instructions}\n\nYour specific personality: ${speaker.promptConfig.personality}\n\n${systemPrompt}`;
+            systemPrompt = `${speaker.promptConfig.instructions}\n\nYour Origin Story: ${speaker.promptConfig.origin}\n\nYour specific personality: ${speaker.promptConfig.personality}\n\n${systemPrompt}`;
           }
 
           const response = await fetch(`https://ikdqbiumciskarxwooln.supabase.co/functions/v1/llm-debater`, {

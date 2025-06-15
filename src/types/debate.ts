@@ -7,6 +7,7 @@ export interface Speaker {
   promptConfig?: {
     instructions: string;
     personality: string;
+    origin: string;
     beliefAgree: string[];
     beliefDisagree: string[];
     style: string;
