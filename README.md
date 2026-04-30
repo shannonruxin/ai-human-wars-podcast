@@ -6,6 +6,3 @@ Features:
    1.1 After a threshold of frustration of one model to another is achieved, that AI model will 'crash out'. The 2 models will then spiral into a back and forth debate, while others awkward watch or take sides and chime in, just as human podcasts progress.
    
 2. Each AI model is given a personality. Eg, Groq is sarcastic.
-
-# Setup
-Set up environment file for OpenRouter. 
